@@ -35,6 +35,20 @@
   :type 'string
   :group 'bloop)
 
+(defcustom bloop-console-prompt "scala> "
+  "Prompt for Bloop console."
+  :type 'string
+  :group 'bloop)
+
+(defconst bloop-ansi-escape-re
+  (rx (or ?\233 (and ?\e ?\[))
+      (zero-or-more (char (?0 . ?\?)))
+      (zero-or-more (char ?\s ?- ?\/))
+      (char (?@ . ?~))))
+
+(defun bloop-prompt-regexp ()
+  (concat "^\\(" bloop-console-prompt "\\|@ \\)[ ]*"))
+
 (defun bloop-buffer-name (_root command)
   (concat "*bloop-" command "*"))
 
@@ -97,6 +111,15 @@
 
     (if comint
         (with-current-buffer (get-buffer-create buffer-name)
+          (setq-local comint-output-filter-functions
+                      (remove 'ansi-color-process-output
+                              comint-output-filter-functions))
+          (add-to-list 'comint-output-filter-functions
+                       'bloop-prompt-filter)
+          (add-to-list 'comint-output-filter-functions
+                       'bloop-unrecognized-csi-filter)
+          (add-to-list 'comint-output-filter-functions
+                       'ansi-color-process-output)
           (pop-to-buffer-same-window (current-buffer))
           ;; (read-only-mode)
           (buffer-disable-undo)
@@ -108,6 +131,9 @@
             (insert (concat root "$ " full-command))
             (newline 2)
             (comint-mode)
+            (setq comint-prompt-regexp (bloop-prompt-regexp))
+            (setq-local comint-use-prompt-regexp t)
+            (setq-local comint-prompt-read-only t)
             ;; (compilation-shell-minor-mode)
             (comint-exec (current-buffer) buffer-name bloop-program-name nil (cons command args))
             (current-buffer)))
@@ -140,6 +166,66 @@
          (project-name (car project))
          (target-test (concat "*" (replace-regexp-in-string ".scala" "" (car (last (split-string (buffer-file-name) "/")))))))
     (bloop-exec nil root "test" "--reporter" bloop-reporter "--only" target-test project-name)))
+
+(defun bloop-unrecognized-csi-filter (ignored)
+  (let ((start-marker (if (and (markerp comint-last-output-start)
+                               (eq (marker-buffer comint-last-output-start)
+                                   (current-buffer))
+                               (marker-position comint-last-output-start))
+                          comint-last-output-start
+                        (point-min-marker)))
+        (end-marker (process-mark (get-buffer-process (current-buffer)))))
+    (save-excursion
+      (goto-char start-marker)
+      (while (re-search-forward bloop-ansi-escape-re end-marker t)
+        (replace-match "")))))
+
+(defun bloop-prompt-filter (str)
+  (when (> (length str) 0)
+    (let ((start-marker (if (and (markerp comint-last-output-start)
+                                 (eq (marker-buffer comint-last-output-start)
+                                     (current-buffer))
+                                 (marker-position comint-last-output-start))
+                            comint-last-output-start
+                          (point-min-marker)))
+          (end-marker (process-mark (get-buffer-process (current-buffer))))
+          (inhibit-read-only t))
+      ;; Replace prompt
+      (save-excursion
+        (goto-char start-marker)
+        (while (re-search-forward (bloop-prompt-regexp) end-marker t)
+          (replace-match bloop-console-prompt t t)))
+      ;; Replace indent
+      (save-excursion
+        (goto-char start-marker)
+        (while (re-search-forward "^\\(  \\)[ ]*[^ ]" end-marker t)
+          (replace-match (make-string (length bloop-console-prompt) ? )
+                         t t nil 1)))
+      (save-excursion
+        (goto-char start-marker)
+        (when (re-search-forward "^   $" end-marker t)
+          (replace-match (make-string (length bloop-console-prompt) ? ) t t)))
+      ;; Delete echoed content
+      (save-excursion
+        (goto-char end-marker)
+        (let* ((end1 (point))
+               (beg1 (re-search-backward (bloop-prompt-regexp) start-marker t))
+               (end2 (point))
+               (beg2 (re-search-backward (bloop-prompt-regexp) nil t)))
+          (when (and beg1 beg2
+                     (string=
+                      (string-trim (buffer-substring-no-properties beg1 end1))
+                      (string-trim (buffer-substring-no-properties beg2 end2))))
+            (delete-region beg2 end2)))))))
+
+;;;###autoload
+(defun bloop-console ()
+  (interactive)
+  (let* ((root (bloop-find-root (buffer-file-name)))
+         (project (bloop-current-project root))
+         (project-name (car project))
+         (default-directory root))
+    (bloop-exec t root "console" project-name)))
 
 ;;;###autoload
 (defun bloop-show-current-project ()
