@@ -40,6 +40,11 @@
   :type 'string
   :group 'bloop)
 
+(defcustom bloop-console-prompt2 "     | "
+  "Prompt for Bloop console, which shows up when the line is continuing."
+  :type 'string
+  :group 'bloop)
+
 (defconst bloop-ansi-escape-re
   (rx (or ?\233 (and ?\e ?\[))
       (zero-or-more (char (?0 . ?\?)))
@@ -199,17 +204,18 @@
       (save-excursion
         (goto-char start-marker)
         (while (re-search-forward "^\\(  \\)[ ]*[^ ]" end-marker t)
-          (replace-match (make-string (length bloop-console-prompt) ? )
-                         t t nil 1)))
+          (replace-match bloop-console-prompt2 t t nil 1)))
       (save-excursion
         (goto-char start-marker)
         (when (re-search-forward "^   $" end-marker t)
-          (replace-match (make-string (length bloop-console-prompt) ? ) t t)))
+          (replace-match bloop-console-prompt2 t t)))
       ;; Delete echoed content
       (save-excursion
         (goto-char end-marker)
-        (let* ((end1 (point))
-               (beg1 (re-search-backward (bloop-prompt-regexp) start-marker t))
+        (beginning-of-line)
+        (let* ((bound (min (point) start-marker))
+               (end1 (point))
+               (beg1 (re-search-backward (bloop-prompt-regexp) bound t))
                (end2 (point))
                (beg2 (re-search-backward (bloop-prompt-regexp) nil t)))
           (when (and beg1 beg2
