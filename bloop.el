@@ -172,6 +172,14 @@
          (target-test (concat "*" (replace-regexp-in-string ".scala" "" (car (last (split-string (buffer-file-name) "/")))))))
     (bloop-exec nil root "test" "--reporter" bloop-reporter "--only" target-test project-name)))
 
+;;;###autoload
+(defun bloop-clean ()
+  (interactive)
+  (let* ((root (bloop-find-root (buffer-file-name)))
+         (project (bloop-current-project root))
+         (project-name (car project)))
+    (bloop-exec nil root "clean" project-name)))
+
 (defun bloop-unrecognized-csi-filter (ignored)
   (let ((start-marker (if (and (markerp comint-last-output-start)
                                (eq (marker-buffer comint-last-output-start)
