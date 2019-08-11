@@ -107,6 +107,7 @@
   (let* ((buffer-name (bloop-buffer-name root command))
          (raw-command (cons bloop-program-name (cons command args)))
          (full-command (string-join (mapcar 'shell-quote-argument raw-command) " "))
+         (default-directory default-directory)
          (inhibit-read-only 1))
 
     (when (not (executable-find bloop-program-name))
