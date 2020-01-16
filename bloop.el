@@ -74,10 +74,11 @@
          (json-array-type 'list)
          (json-key-type 'string)
          (json (json-read-file project-file))
-         (project (gethash "project" json))
-         (name (gethash "name" project))
-         (dirs (gethash "sources" project)))
-    (cons name (mapcar 'file-name-as-directory dirs))))
+         (project (gethash "project" json)))
+    (when project
+      (let ((name (gethash "name" project))
+            (dirs (gethash "sources" project)))
+        (cons name (mapcar 'file-name-as-directory dirs))))))
 
 (defun bloop-longest-string (func strings)
   (let ((sorted (sort strings (lambda (x y) (> (length (funcall func x))
